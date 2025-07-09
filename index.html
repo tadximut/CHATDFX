@@ -1,0 +1,220 @@
+<!DOCTYPE html><html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChatDFX</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      background: #121212;
+      color: #fff;
+      font-family: sans-serif;
+      display: flex;
+    }
+    #sidebar {
+      width: 260px;
+      background: #1e1e1e;
+      padding: 20px;
+      border-right: 1px solid #333;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    #main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    #welcome {
+      margin: auto;
+      text-align: center;
+    }
+    .actions button {
+      background: #2e2e2e;
+      border: 1px solid #444;
+      color: white;
+      padding: 10px 15px;
+      margin: 5px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    #chat {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+    }
+    .hidden {
+      display: none;
+    }
+    .message {
+      max-width: 75%;
+      padding: 10px 14px;
+      margin: 10px 0;
+      border-radius: 10px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    .user {
+      background: #2e2e2e;
+      align-self: flex-start;
+    }
+    .bot {
+      background: #3a3a3a;
+      align-self: flex-end;
+    }
+    .input-bar {
+      display: flex;
+      padding: 10px;
+      border-top: 1px solid #333;
+      background: #1e1e1e;
+    }
+    textarea {
+      flex: 1;
+      background: #2e2e2e;
+      color: white;
+      border: none;
+      padding: 10px;
+      resize: none;
+      border-radius: 8px;
+      font-size: 16px;
+    }
+    button {
+      background: #3f51b5;
+      color: white;
+      border: none;
+      margin-left: 10px;
+      padding: 10px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="sidebar">
+    <h2>ChatDFX</h2>
+    <button onclick="newChat()">+ Chat Baru</button>
+    <ul id="history"></ul>
+  </div>
+  <div id="main">
+    <div id="welcome">
+      <h1>Apa yang bisa saya bantu?</h1>
+      <div class="actions">
+        <button onclick="insertPrompt('/image cewek anime 4k')">🖼️ Buat Gambar</button>
+        <button onclick="insertPrompt('Rangkum teks ini: ')">📚 Rangkum Teks</button>
+        <button onclick="insertPrompt('Buatkan rencana harian untuk saya')">📝 Buat Rencana</button>
+      </div>
+    </div>
+    <div id="chat" class="hidden"></div>
+    <div class="input-bar">
+      <textarea id="input" placeholder="Tanyakan apa saja" oninput="resizeInput()"></textarea>
+      <button onclick="sendMessage()">Kirim</button>
+    </div>
+  </div>
+  <script>
+    const geminiKey = "AIzaSyDt3z3bZFc3KODMxItGsZ5ngqhKqlGVFUM";
+    const imageKey = "r8_PCbfuQ1Ap7krmjYi85w5eNtHnswSUyx2YYzZM";
+    let chatId = Date.now().toString();
+    let isLoading = false;function resizeInput() {
+  const textarea = document.getElementById("input");
+  textarea.style.height = "auto";
+  textarea.style.height = textarea.scrollHeight + "px";
+}
+
+function insertPrompt(text) {
+  document.getElementById("input").value = text;
+  document.getElementById("input").focus();
+}
+
+function newChat() {
+  chatId = Date.now().toString();
+  document.getElementById("chat").innerHTML = "";
+  document.getElementById("welcome").classList.remove("hidden");
+  document.getElementById("chat").classList.add("hidden");
+}
+
+function appendMessage(role, content) {
+  const chat = document.getElementById("chat");
+  const msg = document.createElement("div");
+  msg.className = `message ${role}`;
+  msg.textContent = content;
+  chat.appendChild(msg);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+async function sendMessage() {
+  const input = document.getElementById("input");
+  const text = input.value.trim();
+  if (!text || isLoading) return;
+  input.value = "";
+  resizeInput();
+  document.getElementById("welcome").classList.add("hidden");
+  document.getElementById("chat").classList.remove("hidden");
+  appendMessage("user", text);
+  appendMessage("bot", "... mengetik");
+  isLoading = true;
+
+  let reply = "";
+  if (text.startsWith("/image ")) {
+    const prompt = text.replace("/image ", "");
+    const res = await fetch("https://api.replicate.com/v1/predictions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Token ${imageKey}`
+      },
+      body: JSON.stringify({
+        version: "db21e45b56c68b320aad3c4985b0bfefb180d3899826fdf9a55c1679cbf3966e",
+        input: { prompt }
+      })
+    });
+    const data = await res.json();
+    reply = data?.urls?.get || "(Gagal menghasilkan gambar)";
+  } else {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${geminiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ parts: [{ text }] }] })
+    });
+    const data = await res.json();
+    reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "(Gagal menjawab)";
+  }
+
+  document.querySelector(".bot:last-child").textContent = reply;
+  saveChat(chatId);
+  isLoading = false;
+}
+
+function saveChat(id) {
+  const content = document.getElementById("chat").innerHTML;
+  localStorage.setItem("chat-" + id, content);
+  updateHistory();
+}
+
+function updateHistory() {
+  const ul = document.getElementById("history");
+  ul.innerHTML = "";
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key.startsWith("chat-")) {
+      const li = document.createElement("li");
+      li.textContent = key.replace("chat-", "Chat ");
+      li.onclick = () => {
+        chatId = key.replace("chat-", "");
+        document.getElementById("chat").innerHTML = localStorage.getItem(key);
+        document.getElementById("welcome").classList.add("hidden");
+        document.getElementById("chat").classList.remove("hidden");
+      };
+      ul.appendChild(li);
+    }
+  }
+}
+
+updateHistory();
+
+  </script>
+</body>
+</html>
